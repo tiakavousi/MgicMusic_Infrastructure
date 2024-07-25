@@ -2,7 +2,7 @@
 
 This project automates the deployment of a Dockerized application to AWS ECS using AWS CodeDeploy for continuous deployment. The infrastructure is defined and managed using Terraform.
 
-related repository : MagicMusic [link text](https://github.com/tiakavousi/MagicMusic.git)
+related repository : MagicMusic [https://github.com/tiakavousi/MagicMusic.git](https://github.com/tiakavousi/MagicMusic.git)
 
 ## Architecture
 
