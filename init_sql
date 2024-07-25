@@ -1,0 +1,11 @@
+USE `musics_db`;
+
+CREATE DATABASE IF NOT EXISTS musics_db;
+
+USE musics_db;
+
+CREATE TABLE IF NOT EXISTS musics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(80) NOT NULL,
+    singer VARCHAR(80) NOT NULL
+);
