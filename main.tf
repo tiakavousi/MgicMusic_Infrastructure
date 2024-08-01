@@ -76,6 +76,13 @@ resource "aws_security_group" "ecs_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+   ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   ingress {
     from_port   = 5000
     to_port     = 5000
@@ -220,8 +227,9 @@ resource "aws_ecs_task_definition" "my_task" {
     aws_cloudwatch_log_group.ecs_db
   ]
 }
-
+############################################
 # APPLICATION LOAD BALANCER
+############################################
 resource "aws_lb" "alb" {
   name               = "ecs-alb"
   internal           = false
@@ -233,31 +241,52 @@ resource "aws_lb" "alb" {
   ]
 }
 
-resource "aws_lb_target_group" "frontend_target_group" {
-  name     = "frontend-tg"
+resource "aws_lb_target_group" "frontend_target_group_blue" {
+  name     = "frontend-tg-blue"
   port     = 3000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
   target_type = "ip"
+  depends_on = [aws_lb.alb]
 }
 
+resource "aws_lb_target_group" "frontend_target_group_green" {
+  name     = "frontend-tg-green"
+  port     = 3000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+  depends_on = [aws_lb.alb]
+}
 
-resource "aws_lb_listener" "frontend_listener" {
+resource "aws_lb_listener" "frontend_listener_blue" {
   load_balancer_arn = aws_lb.alb.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.frontend_target_group.arn
+    target_group_arn = aws_lb_target_group.frontend_target_group_blue.arn
   }
 }
 
-# ECS SERVICES
-resource "aws_ecs_service" "my_app_service" {
-  name            = "my-app-service"
+resource "aws_lb_listener" "frontend_listener_green" {
+  load_balancer_arn = aws_lb.alb.arn
+  port              = "8080"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend_target_group_green.arn
+  }
+}
+############################################
+# ECS SERVICES Blue
+############################################
+resource "aws_ecs_service" "my_app_service_blue" {
+  name            = "my-app-service_blue"
   cluster         = aws_ecs_cluster.ecs_cluster.id
-  task_definition = aws_ecs_task_definition.frontend_task.arn
+  task_definition = aws_ecs_task_definition.my_task.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -270,12 +299,8 @@ resource "aws_ecs_service" "my_app_service" {
     assign_public_ip = true
   }
 
-  service_registries {
-    registry_arn = aws_service_discovery_service.frontend_service.arn
-  }
-
   load_balancer {
-    target_group_arn = aws_lb_target_group.frontend_target_group.arn
+    target_group_arn = aws_lb_target_group.frontend_target_group_blue.arn
     container_name   = "frontend"
     container_port   = 3000
   }
@@ -284,10 +309,13 @@ resource "aws_ecs_service" "my_app_service" {
   }
 }
 
-resource "aws_ecs_service" "backend-db_service" {
-  name            = "backend-service"
+############################################
+# ECS SERVICES Green
+############################################
+resource "aws_ecs_service" "my_app_service_green" {
+  name            = "my-app-service_green"
   cluster         = aws_ecs_cluster.ecs_cluster.id
-  task_definition = aws_ecs_task_definition.backend-db_task.arn
+  task_definition = aws_ecs_task_definition.my_task.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -299,7 +327,12 @@ resource "aws_ecs_service" "backend-db_service" {
     security_groups = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
   }
-  
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.frontend_target_group_green.arn
+    container_name   = "frontend"
+    container_port   = 3000
+  }
   deployment_controller {
     type = "CODE_DEPLOY"
   }
@@ -308,11 +341,6 @@ resource "aws_ecs_service" "backend-db_service" {
 ######################################################################
 # AWS CODEDEPLOY
 ######################################################################
-
-resource "aws_codedeploy_app" "my_app" {
-  name = "my-app"
-  compute_platform = "ECS"
-}
 
 # CODEDEPLOY IAM ROLE
 resource "aws_iam_role" "codedeploy_role" {
@@ -370,92 +398,58 @@ resource "aws_iam_policy_attachment" "codedeploy_ecs_policy_attachment" {
   policy_arn = aws_iam_policy.codedeploy_ecs_policy.arn
 }
 
-# CODEDEPLOY DEPLOYMENT GROUP FOR FRONTEND
-resource "aws_codedeploy_deployment_group" "frontend_deployment_group" {
-  app_name              = aws_codedeploy_app.my_app.name
-  deployment_group_name = "frontend-deployment-group"
-  service_role_arn      = aws_iam_role.codedeploy_role.arn
-  deployment_config_name = "CodeDeploy.ECSBlueGreen"
-  
-  ecs_service {
-    cluster_name = aws_ecs_cluster.ecs_cluster.name
-    service_name = aws_ecs_service.frontend_service.name
+# CODEDEPLOY
+resource "aws_codedeploy_app" "example" {
+  compute_platform = "ECS"
+  name             = "example"
+}
+
+# CODEDEPLOY deployment group
+resource "aws_codedeploy_deployment_group" "example" {
+  app_name               = aws_codedeploy_app.example.name
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+  deployment_group_name  = "example"
+  service_role_arn       = aws_iam_role.codedeploy_role.arn
+
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
   }
 
-  # deployment_style {
-  #   deployment_type = "BLUE_GREEN"
-  #   deployment_option = "WITH_TRAFFIC_CONTROL"
-  # }
+  blue_green_deployment_config {
+    deployment_ready_option {
+      action_on_timeout = "CONTINUE_DEPLOYMENT"
+    }
 
-  # auto_rollback_configuration {
-  #   enabled = true
-  #   events  = ["DEPLOYMENT_FAILURE"]
-  # }
-
-  # blue_green_deployment_config {
-  #   deployment_ready_option {
-  #     action_on_timeout = "CONTINUE_DEPLOYMENT"
-  #   }
-
-  #   terminate_blue_instances_on_deployment_success {
-  #     action                           = "TERMINATE"
-  #     termination_wait_time_in_minutes = 5
-  #   }
-  # }
-
-  load_balancer_info {
-    elb_info {
-      name = aws_lb.alb.name
+    terminate_blue_instances_on_deployment_success {
+      action                           = "TERMINATE"
+      termination_wait_time_in_minutes = 5
     }
   }
 
-  tags = {
-    Name = "frontend-deployment-group"
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
+  }
+
+  ecs_service {
+    cluster_name = aws_ecs_cluster.ecs_cluster.name
+    service_name = aws_ecs_service.my_app_service_blue.name
+  }
+
+  load_balancer_info {
+    target_group_pair_info {
+      prod_traffic_route {
+        listener_arns = [aws_lb_listener.frontend_listener_blue.arn]
+      }
+
+      target_group {
+        name = aws_lb_target_group.frontend_target_group_blue.name
+      }
+
+      target_group {
+        name = aws_lb_target_group.frontend_target_group_green.name
+      }
+    }
   }
 }
-
-# CODEDEPLOY CODEDEPLOYMENT GROUP FOR BACKEND-DB
-# resource "aws_codedeploy_deployment_group" "backend_db_deployment_group" {
-#   app_name              = aws_codedeploy_app.my_app.name
-#   deployment_group_name = "backend-db-deployment-group"
-#   service_role_arn      = aws_iam_role.codedeploy_role.arn
-#   deployment_config_name = "CodeDeploy.ECSBlueGreen"
-  
-#   ecs_service {
-#     cluster_name = aws_ecs_cluster.ecs_cluster.name
-#     service_name = aws_ecs_service.backend-db_service.name
-#   }
-
-#   deployment_style {
-#     deployment_type = "BLUE_GREEN"
-#     deployment_option = "WITH_TRAFFIC_CONTROL"
-#   }
-
-#   auto_rollback_configuration {
-#     enabled = true
-#     events  = ["DEPLOYMENT_FAILURE"]
-#   }
-
-#   blue_green_deployment_config {
-#     deployment_ready_option {
-#       action_on_timeout = "CONTINUE_DEPLOYMENT"
-#     }
-
-#     terminate_blue_instances_on_deployment_success {
-#       action                           = "TERMINATE"
-#       termination_wait_time_in_minutes = 5
-#     }
-#   }
-
-#   tags = {
-#     Name = "backend-db-deployment-group"
-#   }
-# }
-
-# resource "aws_codedeploy_deployment_config" "blue_green" {
-#   deployment_config_name = "CodeDeploy.ECSBlueGreen"
-#   minimum_healthy_hosts {
-#     type  = "HOST_COUNT"
-#     value = 1
-#   }
-# }
