@@ -110,7 +110,7 @@ resource "aws_cloudwatch_log_group" "ecs_db" {
 
 # ECS CLUSTER
 resource "aws_ecs_cluster" "ecs_cluster" {
-  name = "MagicMusic_ecs-cluster"
+  name = "My_ecs-cluster"
 }
 
 # ECS IAM ROLE
@@ -136,71 +136,10 @@ resource "aws_iam_policy_attachment" "ecs_task_execution_policy" {
   roles      = [aws_iam_role.ecs_task_execution_role.name]
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
- 
-# SERVICE DISCOVERY NAMESPACE
-resource "aws_service_discovery_private_dns_namespace" "private_dns_namespace" {
-  name = "magicmusic.local"
-  vpc  = aws_vpc.main.id
-}
-
-# SERVICE DISCOVERY SERVICE
-resource "aws_service_discovery_service" "backend_service" {
-  name = "backend-service"
-  namespace_id = aws_service_discovery_private_dns_namespace.private_dns_namespace.id
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.private_dns_namespace.id
-    routing_policy = "MULTIVALUE"
-    dns_records {
-      type = "A"
-      ttl  = "60"
-    }
-  }
-}
-
-resource "aws_service_discovery_service" "frontend_service" {
-  name = "frontend-service"
-  namespace_id = aws_service_discovery_private_dns_namespace.private_dns_namespace.id
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.private_dns_namespace.id
-    routing_policy = "MULTIVALUE"
-    dns_records {
-      type = "A"
-      ttl  = 10
-    }
-  }
-}
 
 # ECS TASK DEFINITIONS
-resource "aws_ecs_task_definition" "frontend_task" {
-  family                   = "frontend-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-
-  container_definitions = jsonencode([
-    {
-      name         = "frontend"
-      image        = var.frontend_container_image
-      essential    = true
-      portMappings = [{
-        containerPort = 3000
-      }]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options   = {
-          "awslogs-group"         = aws_cloudwatch_log_group.ecs_frontend.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "ecs"
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_task_definition" "backend-db_task" {
-  family                   = "db-task"
+resource "aws_ecs_task_definition" "my_task" {
+  family                   = "my-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "512"
@@ -257,6 +196,22 @@ resource "aws_ecs_task_definition" "backend-db_task" {
           "awslogs-stream-prefix" = "ecs"
         }
       }
+    },
+    {
+      name         = "frontend"
+      image        = var.frontend_container_image
+      essential    = true
+      portMappings = [{
+        containerPort = 3000
+      }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options   = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_frontend.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
     }
   ])
   depends_on = [
@@ -286,6 +241,7 @@ resource "aws_lb_target_group" "frontend_target_group" {
   target_type = "ip"
 }
 
+
 resource "aws_lb_listener" "frontend_listener" {
   load_balancer_arn = aws_lb.alb.arn
   port              = "80"
@@ -298,8 +254,8 @@ resource "aws_lb_listener" "frontend_listener" {
 }
 
 # ECS SERVICES
-resource "aws_ecs_service" "frontend_service" {
-  name            = "frontend-service"
+resource "aws_ecs_service" "my_app_service" {
+  name            = "my-app-service"
   cluster         = aws_ecs_cluster.ecs_cluster.id
   task_definition = aws_ecs_task_definition.frontend_task.arn
   desired_count   = 1
@@ -323,6 +279,9 @@ resource "aws_ecs_service" "frontend_service" {
     container_name   = "frontend"
     container_port   = 3000
   }
+  deployment_controller {
+    type = "CODE_DEPLOY"
+  }
 }
 
 resource "aws_ecs_service" "backend-db_service" {
@@ -340,9 +299,9 @@ resource "aws_ecs_service" "backend-db_service" {
     security_groups = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
   }
-
-  service_registries {
-    registry_arn = aws_service_discovery_service.backend_service.arn
+  
+  deployment_controller {
+    type = "CODE_DEPLOY"
   }
 }
 
@@ -350,8 +309,8 @@ resource "aws_ecs_service" "backend-db_service" {
 # AWS CODEDEPLOY
 ######################################################################
 
-resource "aws_codedeploy_app" "magicmusic_app" {
-  name = "magicmusic-app"
+resource "aws_codedeploy_app" "my_app" {
+  name = "my-app"
   compute_platform = "ECS"
 }
 
@@ -380,27 +339,74 @@ resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
   role     = aws_iam_role.codedeploy_role.name
 }
+resource "aws_iam_policy_attachment" "codedeploy_ecs_read_only_policy" {
+  name       = "codedeploy-ecs-read-only-policy"
+  roles      = [aws_iam_role.codedeploy_role.name]
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECS_FullAccess"
+}
 
-# CODEDEPLOY CODEDEPLOYMENT GROUP FOR FRONTEND
+resource "aws_iam_policy" "codedeploy_ecs_policy" {
+  name        = "CodeDeployECSPolicy"
+  description = "Policy for CodeDeploy to describe ECS services"
+  
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:ListServices"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy_attachment" "codedeploy_ecs_policy_attachment" {
+  name       = "codedeploy-ecs-policy-attachment"
+  roles      = [aws_iam_role.codedeploy_role.name]
+  policy_arn = aws_iam_policy.codedeploy_ecs_policy.arn
+}
+
+# CODEDEPLOY DEPLOYMENT GROUP FOR FRONTEND
 resource "aws_codedeploy_deployment_group" "frontend_deployment_group" {
-  app_name              = aws_codedeploy_app.magicmusic_app.name
+  app_name              = aws_codedeploy_app.my_app.name
   deployment_group_name = "frontend-deployment-group"
   service_role_arn      = aws_iam_role.codedeploy_role.arn
-  deployment_config_name = "CodeDeploy.ECSAllAtOnce"
+  deployment_config_name = "CodeDeploy.ECSBlueGreen"
   
   ecs_service {
     cluster_name = aws_ecs_cluster.ecs_cluster.name
     service_name = aws_ecs_service.frontend_service.name
   }
 
-  deployment_style {
-    deployment_type = "BLUE_GREEN"
-    deployment_option = "WITH_TRAFFIC_CONTROL"
-  }
+  # deployment_style {
+  #   deployment_type = "BLUE_GREEN"
+  #   deployment_option = "WITH_TRAFFIC_CONTROL"
+  # }
 
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
+  # auto_rollback_configuration {
+  #   enabled = true
+  #   events  = ["DEPLOYMENT_FAILURE"]
+  # }
+
+  # blue_green_deployment_config {
+  #   deployment_ready_option {
+  #     action_on_timeout = "CONTINUE_DEPLOYMENT"
+  #   }
+
+  #   terminate_blue_instances_on_deployment_success {
+  #     action                           = "TERMINATE"
+  #     termination_wait_time_in_minutes = 5
+  #   }
+  # }
+
+  load_balancer_info {
+    elb_info {
+      name = aws_lb.alb.name
+    }
   }
 
   tags = {
@@ -408,38 +414,48 @@ resource "aws_codedeploy_deployment_group" "frontend_deployment_group" {
   }
 }
 
-# CODEDEPLOY CODEDEPLOYMENT GROUP FOR BACKEND AND DB
-resource "aws_codedeploy_deployment_group" "backend_db_deployment_group" {
-  app_name              = aws_codedeploy_app.magicmusic_app.name
-  deployment_group_name = "backend-db-deployment-group"
-  service_role_arn      = aws_iam_role.codedeploy_role.arn
-  deployment_config_name = "CodeDeploy.ECSAllAtOnce"
+# CODEDEPLOY CODEDEPLOYMENT GROUP FOR BACKEND-DB
+# resource "aws_codedeploy_deployment_group" "backend_db_deployment_group" {
+#   app_name              = aws_codedeploy_app.my_app.name
+#   deployment_group_name = "backend-db-deployment-group"
+#   service_role_arn      = aws_iam_role.codedeploy_role.arn
+#   deployment_config_name = "CodeDeploy.ECSBlueGreen"
   
-  ecs_service {
-    cluster_name = aws_ecs_cluster.ecs_cluster.name
-    service_name = aws_ecs_service.backend-db_service.name
-  }
+#   ecs_service {
+#     cluster_name = aws_ecs_cluster.ecs_cluster.name
+#     service_name = aws_ecs_service.backend-db_service.name
+#   }
 
-  deployment_style {
-    deployment_type = "BLUE_GREEN"
-    deployment_option = "WITH_TRAFFIC_CONTROL"
-  }
+#   deployment_style {
+#     deployment_type = "BLUE_GREEN"
+#     deployment_option = "WITH_TRAFFIC_CONTROL"
+#   }
 
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
-  }
+#   auto_rollback_configuration {
+#     enabled = true
+#     events  = ["DEPLOYMENT_FAILURE"]
+#   }
 
-  tags = {
-    Name = "backend-db-deployment-group"
-  }
-}
+#   blue_green_deployment_config {
+#     deployment_ready_option {
+#       action_on_timeout = "CONTINUE_DEPLOYMENT"
+#     }
 
-# CODEDEPLOY ALB (for Blue/Green deployments)
-resource "aws_codedeploy_deployment_config" "blue_green" {
-  deployment_config_name = "CodeDeploy.ECSBlueGreen"
-  minimum_healthy_hosts {
-    type  = "HOST_COUNT"
-    value = 1
-  }
-}
+#     terminate_blue_instances_on_deployment_success {
+#       action                           = "TERMINATE"
+#       termination_wait_time_in_minutes = 5
+#     }
+#   }
+
+#   tags = {
+#     Name = "backend-db-deployment-group"
+#   }
+# }
+
+# resource "aws_codedeploy_deployment_config" "blue_green" {
+#   deployment_config_name = "CodeDeploy.ECSBlueGreen"
+#   minimum_healthy_hosts {
+#     type  = "HOST_COUNT"
+#     value = 1
+#   }
+# }
