@@ -51,11 +51,6 @@ variable "db_container_image" {
   type        = string
 }
 
-# variable "sqlalchemy_database_uri" {
-#   description = "Database connection string for SQLAlchemy"
-#   type        = string
-# }
-
 variable "mysql_root_password" {
   description = "Root password for the MySQL database"
   type        = string
@@ -75,4 +70,3 @@ variable "mysql_database" {
   description = "Database name for the MySQL database"
   type        = string
 }
-
