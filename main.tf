@@ -453,3 +453,29 @@ resource "aws_codedeploy_deployment_group" "example" {
     }
   }
 }
+##################################################################
+# IAM Policy for CodeDeploy GitHub Access
+##################################################################
+
+resource "aws_iam_policy" "codedeploy_github_access" {
+  name        = "CodeDeployGitHubAccessPolicy"
+  description = "Policy to allow CodeDeploy to access GitHub repository"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "codecommit:GitPull"  
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_github_access_attachment" {
+  policy_arn = aws_iam_policy.codedeploy_github_access.arn
+  role       = aws_iam_role.codedeploy_role.name 
+}
