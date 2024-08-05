@@ -1,72 +1,51 @@
-variable "aws_access_key" {
-    description = "The IAM public access key"
+variable "region" {
+    type = string
+    description = "AWS Region"
 }
 
-variable "aws_secret_key" {
-    description = "IAM secret access key"
-}
-
-variable "aws_region" {
-    description = "The AWS region things are created in"
+variable "vpc_name" {
+    description = "Name of VPC"
 }
 
 variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
-  type        = string
+    description = "CIDR Block of the VPC"
 }
 
-variable "subnet_1_cidr" {
-  description = "CIDR block for the first public subnet"
-  type        = string
+variable "cidr_block_igw" {
+    description = "CIDR Block for Internet and NAT Gateways"
 }
 
-variable "subnet_2_cidr" {
-  description = "CIDR block for the first public subnet"
-  type        = string
+variable "eks_cluster_name" {
+    description = "Name of the EKS Cluster"
 }
 
-variable "availability_zone_1" {
-  description = "Availability zone for the first public subnet"
-  type        = string
-  
+variable "fargate_profile_name" {
+    type = string
+    description = "Name of the Fargate Profile"
 }
 
-variable "availability_zone_2" {
-  description = "Availability zone for the second public subnet"
-  type        = string
+variable "kubernetes_namespace" {
+    type = string
+    description = "Kubernetes namespace for selection"
 }
 
-variable "backend_container_image" {
-  description = "Docker image for the backend container"
-  type        = string
+variable "deployment_name" {
+    type = string
+    description = "Name of the Deployment"
 }
 
-variable "frontend_container_image" {
-  description = "Docker image for the frontend container"
-  type        = string
+variable "deployment_replicas" {
+    type = string
+    description = "Number of replicas for the Deployment"
 }
 
-variable "db_container_image" {
-  description = "Docker image for the database container"
-  type        = string
+variable "app_labels" {
+    type = map
+    description = "List of the labels for Deployment"
 }
 
-variable "mysql_root_password" {
-  description = "Root password for the MySQL database"
-  type        = string
+variable "instance_class" {
+    type = string
+    description = "Instance type/class"
 }
 
-variable "mysql_user" {
-  description = "User for the MySQL database"
-  type        = string
-}
-
-variable "mysql_password" {
-  description = "Password for the MySQL database user"
-  type        = string
-}
-
-variable "mysql_database" {
-  description = "Database name for the MySQL database"
-  type        = string
-}

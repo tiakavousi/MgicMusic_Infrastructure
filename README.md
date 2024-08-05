@@ -1,16 +1,8 @@
 # MgicMusic_Infrastructure
 
-This project automates the deployment of a Dockerized application to AWS ECS using AWS CodeDeploy for continuous deployment. The infrastructure is defined and managed using Terraform.
+This project IS THE infrastructure and deployment of a Dockerized application to AWS EKS. The infrastructure is defined and managed using Terraform.
 
 related repository : MagicMusic [https://github.com/tiakavousi/MagicMusic.git](https://github.com/tiakavousi/MagicMusic.git)
-
-## Architecture
-
-The high-level architecture includes:
-
-- **Amazon ECS:** For running Docker containers.
-- **AWS CodeDeploy:** For deploying updates to the ECS service.
-- **Terraform:** For defining and provisioning the infrastructure.
 
 ## Prerequisites
 
@@ -25,10 +17,32 @@ Before you begin, ensure you have the following:
 ## Setup Instructions
 
 ```sh
+
 git clone https://github.com/yourusername/your-repo.git
+
 cd your-repo
+
 aws configure
+
 cd terraform
+
 terraform init
+
 terraform plan
-terraform apply
+
+export AWS_SECRET_ACCESS_KEY="XXXXXX"
+
+export AWS_ACCESS_KEY_ID="XXXXXX"
+
+
+terraform apply -auto-approve -var-file=production.tfvars
+
+aws eks describe-cluster --name eks_cluster-default
+
+kubectl apply -f configmap.yaml
+kubectl apply -f magicmusic-deployment-prod.yaml
+kubectl apply -f magicmusic-deployment-qa.yaml
+
+terraform destroy -var-file=production.tfvars
+
+```
